@@ -12,7 +12,7 @@ class Config(object):
     PATH_PREFIX = os.environ.get("SCRIPT_NAME") or ""
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL") or "sqlite:///"+os.path.join(BASEDIR, "database.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    
+
     LOG_LEVEL = os.environ.get("LOG_LEVEL") or "INFO"
 
     UPLOAD_FOLDER = os.path.join(
@@ -21,5 +21,4 @@ class Config(object):
 
     # Create uploads directory if it doesn't exist
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
     ASSEMBLYAI_API_KEY = os.environ.get("ASSEMBLYAI_API_KEY")
