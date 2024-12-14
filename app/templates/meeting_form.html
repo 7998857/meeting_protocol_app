@@ -12,10 +12,12 @@
     <div class="container">
         <h1 class="mb-4">Meeting Protocol Generator</h1>
 
-        {% with messages = get_flashed_messages() %}
+        {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
-                {% for message in messages %}
-                    <div class="alert alert-danger">{{ message }}</div>
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category if category != 'error' else 'danger' }}">
+                        {{ message }}
+                    </div>
                 {% endfor %}
             {% endif %}
         {% endwith %}
@@ -28,6 +30,13 @@
                 </div>
             </div>
         {% endif %}
+
+        <form action="{{ url_for('add_participant') }}" method="POST" class="mb-3">
+            <div class="input-group">
+                <input type="text" class="form-control" name="new_participant" placeholder="Add new participant">
+                <button type="submit" class="btn btn-outline-secondary">Add</button>
+            </div>
+        </form>
 
         <form method="POST" enctype="multipart/form-data">
             <div class="form-group">
@@ -50,26 +59,21 @@
                 <div class="mb-2">
                     {% for participant in participants %}
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="participants" value="{{ participant.id }}" id="participant{{ participant.id }}">
-                            <label class="form-check-label" for="participant{{ participant.id }}">
+                            <input class="form-check-input" type="checkbox" name="participants" value="{{ participant.participant_id }}" id="participant{{ participant.participant_id }}">
+                            <label class="form-check-label" for="participant{{ participant.participant_id }}">
                                 {{ participant.name }}
                             </label>
                         </div>
                     {% endfor %}
                 </div>
-                
-                <div class="input-group">
-                    <input type="text" class="form-control" name="new_participant" placeholder="Add new participant">
-                    <button type="submit" class="btn btn-outline-secondary" name="add_participant">Add</button>
-                </div>
             </div>
-
+    
             <div class="form-group">
                 <label>Protocol Generation Prompt</label>
                 <select class="form-select mb-2" name="existing_prompt">
                     <option value="">Select existing prompt...</option>
                     {% for prompt in prompts %}
-                        <option value="{{ prompt.id }}">{{ prompt.text[:50] }}...</option>
+                        <option value="{{ prompt.prompt_id }}">{{ prompt.text[:50] }}...</option>
                     {% endfor %}
                 </select>
                 

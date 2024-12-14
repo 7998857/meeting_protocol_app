@@ -6,7 +6,7 @@ from pydub import AudioSegment
 
 from app import db
 from config import Config
-from app.models import Participants, Meetings, Transcriptions, Protocols
+from app.models import Meetings
 
 
 logger = logging.getLogger(__name__)
@@ -16,31 +16,29 @@ aai.settings.api_key = Config.ASSEMBLYAI_API_KEY
 transcriber = aai.Transcriber()
 
 
-def create_meeting_protocol(
-        input_file_path: str,
+def summarize_meeting(
+        transcript: aai.Transcript,
         prompt: str,
 ) -> str:
-    if input_file_path.endswith(".wav"):
-        audio = AudioSegment.from_wav(input_file_path)
-        audio.export("/tmp/output.mp3", format="mp3")
-        input_file_path = "/tmp/output.mp3"
-
-    logger.info("Transcribing audio...")
-    transcript = transcribe_audio(input_file_path)
-
     logger.info("Generating meeting protocol...")
     result = transcript.lemur.task(
         prompt, final_model=aai.LemurModel.claude3_5_sonnet
     )
-
-    os.remove("/tmp/output.mp3")
     return result.response
 
 
 def transcribe_audio(
         input_file_path: str,
         num_speakers: int = 4,
-) -> str:
+) -> aai.Transcript:
+
+    is_wav = input_file_path.endswith(".wav")
+
+    if is_wav:
+        audio = AudioSegment.from_wav(input_file_path)
+        audio.export("/tmp/output.mp3", format="mp3")
+        input_file_path = "/tmp/output.mp3"
+
     transcript = transcriber.transcribe(
         data=input_file_path,
         config=aai.TranscriptionConfig(
@@ -50,4 +48,8 @@ def transcribe_audio(
             speech_model="best",
         ),
     )
+
+    if is_wav:
+        os.remove("/tmp/output.mp3")
+
     return transcript
