@@ -5,5 +5,6 @@ from flask_sqlalchemy import SQLAlchemy
 app = Flask(__name__)
 app.config.from_object(Config)
 db = SQLAlchemy(app)
+app.secret_key = 'your_secret_key'
 
 from app import routes
