@@ -22,3 +22,13 @@ class Config(object):
     # Create uploads directory if it doesn't exist
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     ASSEMBLYAI_API_KEY = os.environ.get("ASSEMBLYAI_API_KEY")
+
+    DEFAULT_PROMPT = (
+        "Es handelt sich bei dem Gespräch um ein Arbeits-Meeting. "
+        "Das Transkript wurde automatisch erstellt, es können sich also "
+        "einige falsch erkannte Worte (insbesondere Zahlen) darin befinden. "
+        "Bitte erstelle ein detailliertes Gesprächsprotokoll, das ich so am "
+        "Ende den Gesprächsteilnehmern zusenden kann. Halte wenn möglich auch "
+        "fest, wie die jeweiligen Teilnehmer zu den einzelnen Themen "
+        "eingestellt sind. Vielen Dank :)"
+    )
