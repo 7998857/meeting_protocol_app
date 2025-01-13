@@ -49,7 +49,20 @@ def transcribe_audio(
         ),
     )
 
+    # transcript = add_speaker_labels(transcript)
+
     if is_wav:
         os.remove("/tmp/output.mp3")
+
+    return transcript
+
+
+def add_speaker_labels(transcript: aai.Transcript) -> aai.Transcript:
+    text_with_speaker_labels = ""
+
+    for utt in transcript.utterances:
+        text_with_speaker_labels += f"Speaker {utt.speaker}:\n{utt.text}\n"
+    # crashes like this because transcript.text has no setter
+    transcript.text = text_with_speaker_labels
 
     return transcript

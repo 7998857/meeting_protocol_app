@@ -1,4 +1,3 @@
-
 from datetime import datetime
 import logging
 from pathlib import Path
@@ -202,3 +201,4 @@ def add_participant():
         logger.error(f"Error adding participant: {str(e)}")
         flash("An error occurred while adding the participant", "error")
         return redirect(url_for("meeting_form"))
+

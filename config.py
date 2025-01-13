@@ -30,5 +30,5 @@ class Config(object):
         "Bitte erstelle ein detailliertes Gesprächsprotokoll, das ich so am "
         "Ende den Gesprächsteilnehmern zusenden kann. Halte wenn möglich auch "
         "fest, wie die jeweiligen Teilnehmer zu den einzelnen Themen "
-        "eingestellt sind. Vielen Dank :)"
+        "eingestellt sind. Bitte verwende das Markdown Format. Vielen Dank :)"
     )
