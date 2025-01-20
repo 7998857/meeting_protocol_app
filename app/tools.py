@@ -61,6 +61,6 @@ def get_text_with_speaker_labels(transcript: aai.Transcript) -> str:
     text_with_speaker_labels = ""
 
     for utt in transcript.utterances:
-        text_with_speaker_labels += f"Sprecher {utt.speaker}:\n{utt.text}\n"
+        text_with_speaker_labels += f"Speaker {utt.speaker}:\n{utt.text}\n"
 
     return text_with_speaker_labels

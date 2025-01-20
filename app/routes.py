@@ -97,11 +97,7 @@ def meeting_form():
 
         # Handle prompt
         try:
-            prompt_text = request.form.get("custom_prompt")
-            if not prompt_text:
-                prompt_text = Prompts.query.get(
-                    request.form["existing_prompt"]
-                ).text
+            prompt_text = request.form.get("prompt_text")
 
             if request.form.get("save_prompt"):
                 new_prompt = Prompts(text=prompt_text)

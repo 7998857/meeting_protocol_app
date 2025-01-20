@@ -70,14 +70,14 @@
     
             <div class="form-group">
                 <label>Protocol Generation Prompt</label>
-                <select class="form-select mb-2" name="existing_prompt">
+                <select class="form-select mb-2" name="existing_prompt" id="existing_prompt">
                     <option value="">Select existing prompt...</option>
                     {% for prompt in prompts %}
-                        <option value="{{ prompt.prompt_id }}">{{ prompt.text[:50] }}...</option>
+                        <option value="{{ prompt.prompt_id }}" data-prompt-text="{{ prompt.text }}">{{ prompt.text[:50] }}...</option>
                     {% endfor %}
                 </select>
                 
-                <textarea class="form-control mb-2" name="custom_prompt" rows="3" placeholder="Or write a custom prompt...">{{ default_prompt }}</textarea>
+                <textarea class="form-control mb-2" name="prompt_text" id="prompt_text_area" rows="3" placeholder="Or write a custom prompt...">{{ default_prompt }}</textarea>
                 
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" name="save_prompt" id="save_prompt">
@@ -92,5 +92,16 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('existing_prompt').addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const promptText = selectedOption.getAttribute('data-prompt-text');
+            if (promptText) {
+                document.getElementById('prompt_text_area').value = promptText;
+            } else {
+                document.getElementById('prompt_text_area').value = '{{ default_prompt }}';
+            }
+        });
+    </script>
 </body>
 </html> 
