@@ -3,3 +3,4 @@ uploads/
 .env
 database.db
 *.m4a
+*.pyc
