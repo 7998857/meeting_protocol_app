@@ -17,12 +17,14 @@ transcriber = aai.Transcriber()
 
 
 def summarize_meeting(
-        transcript: aai.Transcript,
+        text_with_speaker_labels: str,
         prompt: str,
 ) -> str:
     logger.info("Generating meeting protocol...")
-    result = transcript.lemur.task(
-        prompt, final_model=aai.LemurModel.claude3_5_sonnet
+    result = aai.Lemur().task(
+        prompt,
+        final_model=aai.LemurModel.claude3_5_sonnet,
+        input_text=text_with_speaker_labels
     )
     return result.response
 
@@ -49,20 +51,16 @@ def transcribe_audio(
         ),
     )
 
-    # transcript = add_speaker_labels(transcript)
-
     if is_wav:
         os.remove("/tmp/output.mp3")
 
     return transcript
 
 
-def add_speaker_labels(transcript: aai.Transcript) -> aai.Transcript:
+def get_text_with_speaker_labels(transcript: aai.Transcript) -> str:
     text_with_speaker_labels = ""
 
     for utt in transcript.utterances:
-        text_with_speaker_labels += f"Speaker {utt.speaker}:\n{utt.text}\n"
-    # crashes like this because transcript.text has no setter
-    transcript.text = text_with_speaker_labels
+        text_with_speaker_labels += f"Sprecher {utt.speaker}:\n{utt.text}\n"
 
-    return transcript
+    return text_with_speaker_labels

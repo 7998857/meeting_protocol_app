@@ -9,7 +9,7 @@ from app import app, db
 from app.models import Meetings, Participants, Transcriptions, \
                        Protocols, Prompts
 from config import Config
-from .tools import transcribe_audio, summarize_meeting
+from .tools import transcribe_audio, summarize_meeting, get_text_with_speaker_labels
 
 
 logger = logging.getLogger(__name__)
@@ -129,7 +129,7 @@ def meeting_form():
 
             transcription = Transcriptions(
                 meeting_id=meeting.meeting_id,
-                text=transcript.text
+                text=get_text_with_speaker_labels(transcript)
             )
             db.session.add(transcription)
             db.session.commit()
@@ -157,7 +157,10 @@ def meeting_form():
                 f"{', '.join([participant.name for participant in meeting.participants])}"
             )
 
-            protocol_text = summarize_meeting(transcript, prompt_text)
+            protocol_text = summarize_meeting(
+                get_text_with_speaker_labels(transcript),
+                prompt_text
+            )
             protocol = Protocols(
                 meeting_id=meeting.meeting_id,
                 transcription_id=transcription.transcription_id,
@@ -201,4 +204,3 @@ def add_participant():
         logger.error(f"Error adding participant: {str(e)}")
         flash("An error occurred while adding the participant", "error")
         return redirect(url_for("meeting_form"))
-
