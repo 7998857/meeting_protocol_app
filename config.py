@@ -28,7 +28,5 @@ class Config(object):
         "Das Transkript wurde automatisch erstellt, es können sich also "
         "einige falsch erkannte Worte (insbesondere Zahlen) darin befinden. "
         "Bitte erstelle ein detailliertes Gesprächsprotokoll, das ich so am "
-        "Ende den Gesprächsteilnehmern zusenden kann. Halte wenn möglich auch "
-        "fest, wie die jeweiligen Teilnehmer zu den einzelnen Themen "
-        "eingestellt sind. Vielen Dank :)"
+        "Ende den Gesprächsteilnehmern zusenden kann. Vielen Dank :)"
     )
