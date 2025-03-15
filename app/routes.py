@@ -174,6 +174,11 @@ def meeting_form():
             )
             return redirect(url_for("meeting_form"))
 
+        flash(
+            f"Meeting created successfully (meeting_id: {meeting.meeting_id})",
+            "success"
+        )
+
         return render_template(
             "meeting_form.html",
             protocol=protocol_text,
