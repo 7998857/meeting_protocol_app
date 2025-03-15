@@ -14,37 +14,43 @@ load_dotenv()
 skip_cache = False
 
 
-def main():
+def main(meeting_id: int):
     database = sqlite3.connect("database.db")
     cursor = database.cursor()
-    transcript = get_transcript(cursor)
-    participants = get_participants(cursor)
-    topic, date = get_topic(cursor)
+    transcript = get_transcript(cursor, meeting_id)
+    participants = get_participants(cursor, meeting_id)
+    topic, date = get_topic(cursor, meeting_id)
 
     client = anthropic.Anthropic(
         api_key=os.getenv("ANTHROPIC_API_KEY")
     )
 
-    speaker_mapping = get_speaker_mapping(client, transcript, participants)
+    speaker_mapping = get_speaker_mapping(
+        client,
+        transcript,
+        participants,
+        meeting_id
+    )
     print("Inferred speaker mapping")
     for speaker, participant in speaker_mapping["speaker_mapping"].items():
         transcript = transcript.replace(speaker, participant)
 
-    agenda = infer_agenda(client, transcript, topic)
+    agenda = infer_agenda(client, transcript, topic, meeting_id)
     print("Inferred agenda")
 
     meeting_protocol = create_meeting_protocol(
         client,
         transcript,
         agenda,
-        date
+        date,
+        meeting_id
     )
     print("Created meeting protocol")
 
-    filename = create_filename(client, meeting_protocol, date)
+    filename = create_filename(client, meeting_protocol, date, meeting_id)
     print("Created filename")
 
-    meeting_protocol = ensure_markdown(client, meeting_protocol)
+    meeting_protocol = ensure_markdown(client, meeting_protocol, meeting_id)
     print("Ensured markdown")
     
     doc_url = export_to_google_drive(filename, meeting_protocol)
@@ -52,21 +58,23 @@ def main():
 
 
 def get_transcript(
-    cursor: sqlite3.Cursor
+    cursor: sqlite3.Cursor,
+    meeting_id: int
 ) -> str:
-    sql = "SELECT text FROM transcriptions WHERE meeting_id = 29"
+    sql = f"SELECT text FROM transcriptions WHERE meeting_id = {meeting_id}"
     cursor.execute(sql)
     transcript = cursor.fetchone()[0]
     return transcript
 
 
 def get_participants(
-    cursor: sqlite3.Cursor
+    cursor: sqlite3.Cursor,
+    meeting_id: int
 ) -> list[str]:
-    sql = """
+    sql = f"""
         SELECT participants.name FROM meeting_participants
         INNER JOIN participants USING(participant_id)
-        WHERE meeting_id=29
+        WHERE meeting_id={meeting_id}
     """
     cursor.execute(sql)
     participants = cursor.fetchall()
@@ -75,9 +83,10 @@ def get_participants(
 
 
 def get_topic(
-    cursor: sqlite3.Cursor
+    cursor: sqlite3.Cursor,
+    meeting_id: int
 ) -> str:
-    sql = "SELECT topic, date FROM meetings WHERE meeting_id = 29"
+    sql = f"SELECT topic, date FROM meetings WHERE meeting_id = {meeting_id}"
     cursor.execute(sql)
     topic, date = cursor.fetchone()
     return topic, date
@@ -86,7 +95,8 @@ def get_topic(
 def get_speaker_mapping(
     client: anthropic.Anthropic,
     transcript: str,
-    participants: list[str]
+    participants: list[str],
+    meeting_id: int
 ) -> dict:
     example_json = {
         "speaker_mapping": {
@@ -106,7 +116,7 @@ def get_speaker_mapping(
         prompt,
         PROMPTS["speaker_mapping"]["system"],
         1000,
-        cache_key="speaker_mapping"
+        cache_key=f"speaker_mapping_{meeting_id}"
     )
 
     return json.loads(message)
@@ -175,7 +185,8 @@ def save_to_cache(
 def infer_agenda(
     client: anthropic.Anthropic,
     transcript: str,
-    topic: str
+    topic: str,
+    meeting_id: int
 ) -> str:
     prompt = PROMPTS["infer_agenda"]["message"].format(
         transcript=transcript,
@@ -188,7 +199,7 @@ def infer_agenda(
         prompt,
         PROMPTS["infer_agenda"]["system"],
         1000,
-        cache_key="agenda"
+        cache_key=f"agenda_{meeting_id}"
     )
 
 
@@ -196,7 +207,8 @@ def create_meeting_protocol(
     client: anthropic.Anthropic,
     transcript: str,
     agenda: str,
-    date: str
+    date: str,
+    meeting_id: int
 ) -> str:
     protocol_example_1 = open("few_shot_examples/protocol_2.txt", "r").read()
     protocol_example_2 = open("few_shot_examples/protocol_3.txt", "r").read()
@@ -215,14 +227,15 @@ def create_meeting_protocol(
         prompt,
         PROMPTS["create_meeting_protocol"]["system"],
         5000,
-        cache_key="meeting_protocol"
+        cache_key=f"meeting_protocol_{meeting_id}"
     )
 
 
 def create_filename(
     client: anthropic.Anthropic,
     meeting_protocol: str,
-    date: str
+    date: str,
+    meeting_id: int
 ) -> str:
     prompt = PROMPTS["create_filename"]["message"].format(
         meeting_protocol=meeting_protocol,
@@ -234,30 +247,36 @@ def create_filename(
         prompt,
         PROMPTS["create_filename"]["system"],
         100,
-        cache_key="filename"
+        cache_key=f"filename_{meeting_id}"
     )
 
 
 def ensure_markdown(
     client: anthropic.Anthropic,
-    meeting_protocol: str
+    meeting_protocol: str,
+    meeting_id: int
 ) -> str:
     prompt = PROMPTS["ensure_markdown"]["message"].format(
         meeting_protocol=meeting_protocol
     )
 
-    # No caching for formatting as it's the final step
     return call_claude_agent(
         client,
         prompt,
         PROMPTS["ensure_markdown"]["system"],
         5000,
-        cache_key="ensure_markdown"
+        cache_key=f"ensure_markdown_{meeting_id}"
     )
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--meeting_id", type=int, required=True)
+    args = parser.parse_args()
+
+    main(args.meeting_id)
 
 """
 ToDo:
