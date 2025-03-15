@@ -4,3 +4,6 @@ uploads/
 database.db
 *.m4a
 *.pyc
+*.pkl
+google_docs_credentials.json
+token.pickle
