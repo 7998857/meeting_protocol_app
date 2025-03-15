@@ -52,7 +52,7 @@ PROMPTS = {
                 "You can extract key information, summarize the content and infer an agenda "
                 "based on the content of the transcript. "
                 "Always respond with an agenda in bullet points. Make it concise and to the point. "
-                "The agenda should be in the same language as the transcript. "
+                "The agenda should always be in the same language as the transcript. "
                 "Please respond with the agenda only."
             )
         },
@@ -84,7 +84,7 @@ PROMPTS = {
                 "Always respond with a meeting protocol in bullet points. "
                 "Make it detailed but still to the point. Keep it strictly to what was said in the meeting. "
                 "And try to correctly infer the opinions of the participants and what was important to them. "
-                "The meeting protocol should be in the same language as the transcript. "
+                "The meeting protocol should always be in the same language as the transcript. "
             )
         },
     "create_filename": {
