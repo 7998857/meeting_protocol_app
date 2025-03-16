@@ -53,7 +53,7 @@ def main(meeting_id: int):
     meeting_protocol = ensure_markdown(client, meeting_protocol, meeting_id)
     print("Ensured markdown")
     
-    doc_url = export_to_google_drive(filename, meeting_protocol)
+    _, doc_url = export_to_google_drive(filename, meeting_protocol)
     print(f"Meeting protocol exported to Google Drive: {doc_url}")
 
 

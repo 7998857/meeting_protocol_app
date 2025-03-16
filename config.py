@@ -1,5 +1,9 @@
 import os
 
+import dotenv
+
+dotenv.load_dotenv()
+
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 
 
@@ -8,9 +12,7 @@ class Config(object):
     Basically just a namespace for the configuration.
     """
 
-    # SCRIPT_NAME is gunicorn's env variable for path prefix
-    PATH_PREFIX = os.environ.get("SCRIPT_NAME") or ""
-    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL") or "sqlite:///"+os.path.join(BASEDIR, "database.db")
+    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL") or "postgresql://postgres:kaitos123@carne-truenas:10999/meeting_protocols"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     LOG_LEVEL = os.environ.get("LOG_LEVEL") or "INFO"
@@ -22,6 +24,7 @@ class Config(object):
     # Create uploads directory if it doesn't exist
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     ASSEMBLYAI_API_KEY = os.environ.get("ASSEMBLYAI_API_KEY")
+    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
     DEFAULT_PROMPT = (
         "Es handelt sich bei dem Gespräch um ein Arbeits-Meeting. "

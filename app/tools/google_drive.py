@@ -63,7 +63,7 @@ def export_to_google_drive(
     if os.path.exists(temp_dir):
         shutil.rmtree(temp_dir)
 
-    return doc_url
+    return doc_id, doc_url
 
 
 def create_google_credentials():
