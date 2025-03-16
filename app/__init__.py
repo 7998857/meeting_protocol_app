@@ -7,4 +7,11 @@ app.config.from_object(Config)
 db = SQLAlchemy(app)
 app.secret_key = 'your_secret_key'
 
-from app import routes
+# Import after app is created to avoid circular imports
+from .routes import init_scheduler
+scheduler = init_scheduler(app)
+
+from app import routes, models
+
+with app.app_context():
+    db.create_all()

@@ -3,15 +3,14 @@ import logging
 import os
 from pathlib import Path
 import pickle
+import time
 from typing import Union
 
 import anthropic
 import assemblyai as aai
 from pydub import AudioSegment
 
-from flask import current_app as app
-import app.models as models
-from app.database import db
+from .models import Meetings, Transcripts, Agendas, MeetingProtocols
 from config import Config
 from .tools.prompts_etc import PROMPTS, AGENDA_EXAMPLES
 from .tools.google_drive import export_to_google_drive
@@ -26,17 +25,20 @@ handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+DEBUG_RUN = True if os.environ.get("DEBUG_RUN", False) else False
+
 aai.settings.api_key = Config.ASSEMBLYAI_API_KEY
 
 
 class MeetingAudioSummarizer:
     def __init__(
         self,
+        db,
         anthropic_api_key: str = Config.ANTHROPIC_API_KEY,
-        assemblyai_api_key: str = Config.ASSEMBLYAI_API_KEY,
-        skip_cache: bool = False,
+        debug_run: bool = DEBUG_RUN,
     ):
-        self._skip_cache = skip_cache
+        self._db = db
+        self._debug_run = debug_run
         
         self._anthropic_client = anthropic.Anthropic(
             api_key=anthropic_api_key
@@ -46,35 +48,42 @@ class MeetingAudioSummarizer:
 
     def summarize_meeting(
         self,
-        meeting: models.Meetings
+        meeting: type[Meetings]
     ) -> str:
-        import pdb; pdb.set_trace()
+        participants = meeting.participants.all()
+        participants = [participant.name for participant in participants]
         transcript = self._transcribe_audio(
             meeting.audio_file_path,
-            len(meeting.participants),
+            len(participants),
             meeting.meeting_id
         )
         logger.info("Transcribed audio")
-        db.session.add(transcript)
-        db.session.commit()
-        logger.info("Added transcript to database")
+        if not self._debug_run:
+            self._db.session.add(transcript)
+            self._db.session.commit()
+            logger.info("Added transcript to database")
 
         speaker_mapping = self._get_speaker_mapping(
-            self._anthropic_client,
             transcript.text,
-            meeting.participants,
+            participants,
             meeting.meeting_id
         )
         logger.info("Inferred speaker mapping")
         transcript.speaker_mapping = json.dumps(speaker_mapping)
-        db.session.commit()
-        logger.info("Added speaker mapping to database")
+        if not self._debug_run:
+            self._db.session.commit()
+            logger.info("Added speaker mapping to database")
 
         for speaker, participant in speaker_mapping["speaker_mapping"].items():
             transcript.text = transcript.text.replace(speaker, participant)
+        
         logger.info("Applied speaker mapping to transcript")
-        db.session.commit()
-        logger.info("Updated transcript in database")
+        if not self._debug_run:
+            self._db.session.commit()
+            logger.info("Updated transcript in database")
+
+        logger.info("Waiting one minute to cool down anthropic API")
+        time.sleep(60)
 
         agenda = self._infer_agenda(
             transcript.text,
@@ -83,9 +92,13 @@ class MeetingAudioSummarizer:
         )
         logger.info("Inferred agenda")
         
-        db.session.add(agenda)
-        db.session.commit()
-        logger.info("Added agenda to database")
+        if not self._debug_run:
+            self._db.session.add(agenda)
+            self._db.session.commit()
+            logger.info("Added agenda to database")
+
+        logger.info("Waiting one minute to cool down anthropic API")
+        time.sleep(60)
 
         meeting_protocol = self._create_meeting_protocol(
             transcript.text,
@@ -94,9 +107,15 @@ class MeetingAudioSummarizer:
             meeting.meeting_id
         )
         logger.info("Created meeting protocol")
-        db.session.add(meeting_protocol)
-        db.session.commit()
-        logger.info("Added meeting protocol to database")
+        meeting_protocol.status = "raw"
+        
+        if not self._debug_run:
+            self._db.session.add(meeting_protocol)
+            self._db.session.commit()
+            logger.info("Added meeting protocol to database")
+
+        logger.info("Waiting one minute to cool down anthropic API")
+        time.sleep(60)
 
         filename = self._create_filename(
             meeting_protocol.text,
@@ -104,22 +123,32 @@ class MeetingAudioSummarizer:
             meeting.meeting_id
         )
         logger.info("Created filename")
-
-        meeting_protocol.language = self._ensure_language(
+        
+        language, translated_protocol = self._ensure_language(
+            transcript.text,
             meeting_protocol.text,
             meeting.meeting_id
         )
+
+        meeting_protocol.language = language
+        meeting_protocol.text = translated_protocol
+        meeting_protocol.status = "language ensured"
         logger.info("Ensured language")
-        db.session.commit()
-        logger.info("Updated meeting protocol in database")
+        
+        if not self._debug_run:
+            self._db.session.commit()
+            logger.info("Updated meeting protocol in database")
 
         meeting_protocol.text = self._ensure_markdown(
             meeting_protocol.text,
             meeting.meeting_id
         )
+        meeting_protocol.status = "markdown ensured"
         logger.info("Ensured markdown")
-        db.session.commit()
-        logger.info("Updated meeting protocol in database")
+        
+        if not self._debug_run:
+            self._db.session.commit()
+            logger.info("Updated meeting protocol in database")
         
         drive_file_id, doc_url = export_to_google_drive(
             filename,
@@ -130,8 +159,11 @@ class MeetingAudioSummarizer:
         meeting_protocol.google_drive_file_id = drive_file_id
         meeting_protocol.google_drive_filename = filename
         meeting_protocol.google_drive_url = doc_url
-        db.session.commit()
-        logger.info("Updated meeting protocol in database")
+        meeting_protocol.status = "exported to Google Drive"
+        
+        if not self._debug_run:
+            self._db.session.commit()
+            logger.info("Updated meeting protocol in database")
 
         return doc_url
 
@@ -141,11 +173,17 @@ class MeetingAudioSummarizer:
         num_speakers: int,
         meeting_id: int
     ) -> aai.Transcript:
-        cached_transcript = self._load_from_cache_if_exists(
-            f"transcript_{meeting_id}"
-        )
-        if cached_transcript:
-            return cached_transcript
+        if self._debug_run:
+            cached_transcript = self._load_from_cache_if_exists(
+                f"transcript_{meeting_id}"
+            )
+        
+            if cached_transcript is not None:
+                transcript = Transcripts(
+                    meeting_id=meeting_id,
+                    text=cached_transcript
+                )
+                return transcript
 
         is_wav = Path(input_file_path).suffix == ".wav"
 
@@ -154,7 +192,7 @@ class MeetingAudioSummarizer:
             audio.export("/tmp/output.mp3", format="mp3")
             input_file_path = "/tmp/output.mp3"
 
-        text = self._transcriber.transcribe(
+        transcript = self._transcriber.transcribe(
             data=str(input_file_path),
             config=aai.TranscriptionConfig(
                 language_code="de",
@@ -164,7 +202,12 @@ class MeetingAudioSummarizer:
             ),
         )
 
-        transcript = models.Transcripts(
+        text = self._get_text_with_speaker_labels(transcript)
+
+        if self._debug_run:
+            self._save_to_cache(f"transcript_{meeting_id}", text)
+        
+        transcript = Transcripts(
             meeting_id=meeting_id,
             text=text
         )
@@ -174,9 +217,19 @@ class MeetingAudioSummarizer:
 
         return transcript
     
+    def _get_text_with_speaker_labels(
+        self,
+        transcript: aai.Transcript
+    ) -> str:
+        text_with_speaker_labels = ""
+
+        for utt in transcript.utterances:
+            text_with_speaker_labels += f"Speaker {utt.speaker}:\n{utt.text}\n"
+
+        return text_with_speaker_labels
+    
     def _get_speaker_mapping(
         self,
-        client: anthropic.Anthropic,
         transcript: str,
         participants: list[str],
         meeting_id: int
@@ -195,7 +248,6 @@ class MeetingAudioSummarizer:
         )
 
         message = self._call_claude_agent(
-            client,
             prompt,
             PROMPTS["speaker_mapping"]["system"],
             1000,
@@ -212,7 +264,7 @@ class MeetingAudioSummarizer:
         cache_key: str = None
     ) -> str:
         # Try to load from cache if a cache key is provided
-        if cache_key and not self._skip_cache:
+        if cache_key and self._debug_run:
             cached_result = self._load_from_cache_if_exists(cache_key)
             if cached_result:
                 return cached_result
@@ -238,7 +290,7 @@ class MeetingAudioSummarizer:
         result = message.content[0].text
         
         # Save to cache if a cache key is provided
-        if cache_key and not self._skip_cache:
+        if cache_key and self._debug_run:
             self._save_to_cache(cache_key, result)
         
         return result
@@ -247,7 +299,7 @@ class MeetingAudioSummarizer:
         self,
         key: str
     ) -> dict | None:
-        if self._skip_cache:
+        if not self._debug_run:
             return None
         if os.path.exists(f"cache/{key}.pkl"):
             return pickle.load(open(f"cache/{key}.pkl", "rb"))
@@ -258,7 +310,7 @@ class MeetingAudioSummarizer:
         key: str,
         data: dict
     ) -> None:
-        if self._skip_cache:
+        if not self._debug_run:
             return
         with open(f"cache/{key}.pkl", "wb") as f:
             pickle.dump(data, f)
@@ -281,7 +333,7 @@ class MeetingAudioSummarizer:
             1000,
             cache_key=f"agenda_{meeting_id}"
         )
-        agenda = models.Agendas(
+        agenda = Agendas(
             meeting_id=meeting_id,
             text=text
         )
@@ -312,7 +364,7 @@ class MeetingAudioSummarizer:
             5000,
             cache_key=f"meeting_protocol_{meeting_id}"
         )
-        meeting_protocol = models.MeetingProtocols(
+        meeting_protocol = MeetingProtocols(
             meeting_id=meeting_id,
             text=text
         )
@@ -349,12 +401,14 @@ class MeetingAudioSummarizer:
             language=language
         )
 
-        return self._call_claude_agent(
+        translated_protocol = self._call_claude_agent(
             prompt,
             PROMPTS["ensure_language"]["system"],
             5000,
             cache_key=f"ensure_language_{meeting_id}"
         )
+
+        return language, translated_protocol
     
     def _infer_language(
         self,

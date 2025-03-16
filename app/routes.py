@@ -1,45 +1,102 @@
+import os
 from datetime import datetime
 import logging
 from pathlib import Path
 import traceback
 
-from flask import request, render_template, flash, redirect, url_for
+from flask import request, render_template, flash, redirect, url_for, jsonify
 
 from app import app, db
-from app.models import Meetings, Participants, Transcriptions, \
-                       Protocols, Prompts
+
+from .models import Meetings, Participants, Transcripts, \
+                       MeetingProtocols
 from config import Config
-from .tools import transcribe_audio, summarize_meeting, get_text_with_speaker_labels
+from .meeting_audio_summarizer import MeetingAudioSummarizer
+from flask_apscheduler import APScheduler
+from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 
 
 logger = logging.getLogger(__name__)
 logger.setLevel(Config.LOG_LEVEL)
 
+# Initialize scheduler
+scheduler = APScheduler()
+
+# This function should be called in your app's __init__.py
+def init_scheduler(app):
+    # Configure scheduler to use SQLAlchemy for persistent job storage
+    app.config['SCHEDULER_JOBSTORES'] = {
+        'default': SQLAlchemyJobStore(url=app.config['SQLALCHEMY_DATABASE_URI'])
+    }
+    app.config['SCHEDULER_API_ENABLED'] = True
+    scheduler.init_app(app)
+    scheduler.start()
+    return scheduler
+
+# Background job function
+def process_meeting_summarization(meeting_id):
+    with app.app_context():
+        try:
+            meeting = Meetings.query.get(meeting_id)
+            if not meeting:
+                logger.error(f"Meeting with ID {meeting_id} not found")
+                return
+                
+            meeting.status = "processing"
+            db.session.commit()
+            
+            summarizer = MeetingAudioSummarizer(db)
+            doc_url = summarizer.summarize_meeting(meeting)
+            
+            # Update meeting status in database
+            meeting.status = "completed"
+            meeting.doc_url = doc_url
+            db.session.commit()
+            
+            logger.info(f"Successfully processed meeting {meeting_id}, doc URL: {doc_url}")
+        except Exception as e:
+            logger.error(f"Error in background job: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            # Update meeting status to failed
+            try:
+                meeting = Meetings.query.get(meeting_id)
+                if meeting:
+                    meeting.status = "failed"
+                    db.session.commit()
+            except Exception as inner_e:
+                logger.error(f"Error updating meeting status: {str(inner_e)}")
 
 @app.route("/", methods=["GET", "POST"])
 def meeting_form():
     if request.method == "GET":
         # Get existing participants and prompts from database
         participants = Participants.query.all()
-        prompts = Prompts.query.all()
+        # Get meetings with their status
+        meetings = Meetings.query.order_by(Meetings.date.desc()).limit(5).all()
         return render_template(
             "meeting_form.html",
             participants=participants,
-            prompts=prompts,
-            default_prompt=Config.DEFAULT_PROMPT
+            meetings=meetings,
+            now=datetime.now()
         )
 
     if request.method == "POST":
         try:
-            meeting = Meetings(
-                topic=request.form["topic"],
-                date=datetime.strptime(
-                    request.form["date"],
-                    "%Y-%m-%dT%H:%M"
+            debug_meeting_id = os.environ.get("DEBUG_MEETING_ID", None)
+            if debug_meeting_id:
+                meeting = Meetings.query.get(debug_meeting_id)
+            else:
+                meeting = Meetings(
+                    topic=request.form["topic"],
+                    date=datetime.strptime(
+                        request.form["date"],
+                        "%Y-%m-%dT%H:%M"
+                    ),
+                    status="pending"  # Add status field
                 )
-            )
-            db.session.add(meeting)
-            db.session.commit()
+                db.session.add(meeting)
+                db.session.commit()
         except Exception as e:
             # log error and traceback
             logger.error(f"Error creating new meeting: {str(e)}")
@@ -95,97 +152,37 @@ def meeting_form():
             )
             return redirect(url_for("meeting_form"))
 
-        # Handle prompt
+        # Schedule the background job
         try:
-            prompt_text = request.form.get("prompt_text")
-
-            if request.form.get("save_prompt"):
-                new_prompt = Prompts(text=prompt_text)
-                db.session.add(new_prompt)
-                db.session.commit()
-        except Exception as e:
-            # log error and traceback
-            logger.error(f"Error saving prompt: {str(e)}")
-            logger.error(traceback.format_exc())
-            flash("An error occurred while saving the prompt", "error")
-            return redirect(url_for("meeting_form"))
-
-        # Generate transcript
-        try:
-            logger.info(f"Transcribing audio file: {filepath}")
+            # Schedule the job to run immediately
+            job_id = f"meeting_{meeting.meeting_id}"
+            scheduler.add_job(
+                id=job_id,
+                func=process_meeting_summarization,
+                args=[meeting.meeting_id],
+                trigger='date',  # Run once immediately
+                run_date=datetime.now(),
+                replace_existing=True
+            )
+            
+            meeting.job_id = job_id
+            meeting.status = "scheduled"
+            db.session.commit()
+            
             flash(
-                "Uploading and transcribing audio file. "
-                "This may take a while...",
+                "Your meeting is being processed in the background. "
+                "You can check the status on the meetings page.",
                 "info"
             )
-            transcript = transcribe_audio(
-                filepath,
-                num_speakers=len(participant_ids)
-            )
-
-            transcription = Transcriptions(
-                meeting_id=meeting.meeting_id,
-                text=get_text_with_speaker_labels(transcript)
-            )
-            db.session.add(transcription)
-            db.session.commit()
         except Exception as e:
-            # log error and traceback
-            logger.error(f"Error generating transcript: {str(e)}")
+            logger.error(f"Error scheduling background job: {str(e)}")
             logger.error(traceback.format_exc())
             flash(
-                "An error occurred while generating the transcript",
+                "An error occurred while scheduling the background process",
                 "error"
             )
-            return redirect(url_for("meeting_form"))
 
-        # Generate protocol
-        try:
-            logger.info(f"Summarizing meeting with prompt: {prompt_text}")
-            flash(
-                "Summarizing meeting. This may take a while...",
-                "info"
-            )
-            prompt_text += (
-                f" Das Meeting wurde am {meeting.date.strftime('%d.%m.%Y um %H:%M')} "
-                f"Uhr abgehalten. Das Thema der Sitzung war: {meeting.topic}. "
-                "Die folgenden Teilnehmer waren anwesend: "
-                f"{', '.join([participant.name for participant in meeting.participants])}"
-            )
-
-            protocol_text = summarize_meeting(
-                get_text_with_speaker_labels(transcript),
-                prompt_text
-            )
-            protocol = Protocols(
-                meeting_id=meeting.meeting_id,
-                transcription_id=transcription.transcription_id,
-                text=protocol_text,
-            )
-            db.session.add(protocol)
-            db.session.commit()
-        except Exception as e:
-            # log error and traceback
-            logger.error(f"Error generating protocol: {str(e)}")
-            logger.error(traceback.format_exc())
-            flash(
-                "An error occurred while generating the protocol",
-                "error"
-            )
-            return redirect(url_for("meeting_form"))
-
-        flash(
-            f"Meeting created successfully (meeting_id: {meeting.meeting_id})",
-            "success"
-        )
-
-        return render_template(
-            "meeting_form.html",
-            protocol=protocol_text,
-            participants=Participants.query.all(),
-            prompts=Prompts.query.all(),
-            default_prompt=Config.DEFAULT_PROMPT
-        )
+        return redirect(url_for("meeting_form"))
 
 
 @app.route("/add_participant", methods=["POST"])
@@ -205,3 +202,23 @@ def add_participant():
         logger.error(f"Error adding participant: {str(e)}")
         flash("An error occurred while adding the participant", "error")
         return redirect(url_for("meeting_form"))
+
+# Add a route to check job status
+@app.route("/job_status/<job_id>")
+def job_status(job_id):
+    job = scheduler.get_job(job_id)
+    if job:
+        return jsonify({
+            'id': job.id,
+            'next_run_time': str(job.next_run_time) if job.next_run_time else None
+        })
+    else:
+        # Job not found, check if it completed
+        meeting = Meetings.query.filter_by(job_id=job_id).first()
+        if meeting:
+            return jsonify({
+                'id': job_id,
+                'status': meeting.status,
+                'doc_url': meeting.doc_url if meeting.status == 'completed' else None
+            })
+        return jsonify({'error': 'Job not found'}), 404

@@ -1,14 +1,5 @@
 from datetime import datetime
-from app import app, db
-
-
-class Prompts(db.Model):
-    prompt_id = db.Column(db.Integer, primary_key=True, index=True)
-    text = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, index=True, default=datetime.now)
-
-    def __repr__(self):
-        return f"<Prompt {self.text}>"
+from app import db
 
 
 # association table for many-to-many relationship
@@ -31,10 +22,17 @@ meeting_participants = db.Table(
 
 
 class Participants(db.Model):
-    participant_id = db.Column(db.Integer, primary_key=True, index=True)
+    participant_id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.Text, unique=True)
-    changed_at = db.Column(db.DateTime, index=True, default=datetime.now)
-    created_at = db.Column(db.DateTime, index=True, default=datetime.now)
+    email = db.Column(db.Text)
+    tag = db.Column(db.Text)
+    changed_at = db.Column(
+        db.DateTime,
+        default=datetime.now,
+        onupdate=datetime.now
+    )
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    
     # Add the relationship to meetings
     meetings = db.relationship(
         'Meetings',
@@ -47,59 +45,93 @@ class Participants(db.Model):
 
 
 class Meetings(db.Model):
-    meeting_id = db.Column(db.Integer, primary_key=True, index=True)
+    meeting_id = db.Column(db.Integer, primary_key=True)
     topic = db.Column(db.Text)
-    date = db.Column(db.DateTime, index=True)
+    date = db.Column(db.DateTime)
     audio_file_path = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, index=True, default=datetime.now)
-    # Remove the old participants relationship
-    transcriptions = db.relationship(
-        "Transcriptions", backref="meeting", lazy="dynamic"
+    language = db.Column(db.Text)
+    status = db.Column(db.String(20), default="pending")
+    job_id = db.Column(db.String(50), nullable=True)
+    doc_url = db.Column(db.String(255), nullable=True)
+    tag = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    changed_at = db.Column(
+        db.DateTime,
+        default=datetime.now,
+        onupdate=datetime.now
     )
-
+    
     def __repr__(self):
         return f"<Meeting {self.topic} ({self.date})>"
 
 
-class Transcriptions(db.Model):
-    transcription_id = db.Column(db.Integer, primary_key=True, index=True)
+class Transcripts(db.Model):
+    transcript_id = db.Column(db.Integer, primary_key=True)
     meeting_id = db.Column(
         db.Integer,
-        db.ForeignKey("meetings.meeting_id"),
-        index=True,
+        db.ForeignKey("meetings.meeting_id")
     )
     text = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, index=True, default=datetime.now)
+    speaker_mapping = db.Column(db.Text)
+    tag = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    changed_at = db.Column(
+        db.DateTime,
+        default=datetime.now,
+        onupdate=datetime.now
+    )
+
+    meeting = db.relationship("Meetings", backref="transcripts")
 
     def __repr__(self):
         return f"<Transcription {self.meeting_id}>"
 
 
-class Protocols(db.Model):
-    protocol_id = db.Column(db.Integer, primary_key=True, index=True)
+class MeetingProtocols(db.Model):
+    meeting_protocol_id = db.Column(db.Integer, primary_key=True)
     meeting_id = db.Column(
         db.Integer,
-        db.ForeignKey("meetings.meeting_id"),
-        index=True,
+        db.ForeignKey("meetings.meeting_id")
     )
-    transcription_id = db.Column(
+    transcript_id = db.Column(
         db.Integer,
-        db.ForeignKey("transcriptions.transcription_id"),
-        index=True,
-    )
-    prompt_id = db.Column(
-        db.Integer,
-        db.ForeignKey("prompts.prompt_id"),
-        index=True,
+        db.ForeignKey("transcripts.transcript_id")
     )
     text = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, index=True, default=datetime.now)
+    google_drive_file_id = db.Column(db.Text)
+    google_drive_filename = db.Column(db.Text)
+    google_drive_url = db.Column(db.Text)
+    status = db.Column(db.Text)
+    tag = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    changed_at = db.Column(
+        db.DateTime,
+        default=datetime.now,
+        onupdate=datetime.now
+    )
+
+    meeting = db.relationship("Meetings", backref="meeting_protocols")
 
     def __repr__(self):
-        return f"<Protocol {self.meeting_id}>"
+        return f"<MeetingProtocol {self.meeting_id}>"
 
 
-# This creates the tables above if not already existing.
-# Accordingly, it has to be done _after_ the definition of the Models!
-with app.app_context():
-    db.create_all()
+class Agendas(db.Model):
+    agenda_id = db.Column(db.Integer, primary_key=True)
+    meeting_id = db.Column(
+        db.Integer,
+        db.ForeignKey("meetings.meeting_id")
+    )
+    text = db.Column(db.Text, nullable=False)
+    tag = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    changed_at = db.Column(
+        db.DateTime,
+        default=datetime.now,
+        onupdate=datetime.now
+    )
+    
+    meeting = db.relationship("Meetings", backref="agendas")
+
+    def __repr__(self):
+        return f"<Agenda {self.meeting_id}>"
