@@ -1,0 +1,8 @@
+.env
+.git
+.gitignore
+venv
+.flake8
+google_drive_credentials.json
+audio_files
+uploads

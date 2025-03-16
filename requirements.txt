@@ -20,6 +20,7 @@ google-auth==2.38.0
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.1
 googleapis-common-protos==1.69.0
+gunicorn==23.0.0
 h11==0.14.0
 httpcore==1.0.7
 httplib2==0.22.0
@@ -33,6 +34,7 @@ markdown-it-py==3.0.0
 MarkupSafe==3.0.2
 mdurl==0.1.2
 oauthlib==3.2.2
+packaging==24.2
 plumbum==1.9.0
 ply==3.11
 proto-plus==1.26.0
