@@ -83,7 +83,8 @@ class MeetingAudioSummarizer:
             logger.info("Updated transcript in database")
 
         logger.info("Waiting one minute to cool down anthropic API")
-        time.sleep(60)
+        if not self._debug_run:
+            time.sleep(60)
 
         agenda = self._infer_agenda(
             transcript.text,
@@ -98,7 +99,8 @@ class MeetingAudioSummarizer:
             logger.info("Added agenda to database")
 
         logger.info("Waiting one minute to cool down anthropic API")
-        time.sleep(60)
+        if not self._debug_run:
+            time.sleep(60)
 
         meeting_protocol = self._create_meeting_protocol(
             transcript.text,
@@ -115,7 +117,8 @@ class MeetingAudioSummarizer:
             logger.info("Added meeting protocol to database")
 
         logger.info("Waiting one minute to cool down anthropic API")
-        time.sleep(60)
+        if not self._debug_run:
+            time.sleep(60)
 
         filename = self._create_filename(
             meeting_protocol.text,

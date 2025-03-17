@@ -126,7 +126,8 @@ def meeting_form():
 
         try:
             meeting.audio_file_path = str(filepath)
-            db.session.commit()
+            if debug_meeting_id is None:
+                db.session.commit()
         except Exception as e:
             # log error and traceback
             logger.error(f"Error adding audio file path to meeting: {str(e)}")
@@ -143,7 +144,8 @@ def meeting_form():
             for participant_id in participant_ids:
                 participant = Participants.query.get(participant_id)
                 meeting.participants.append(participant)
-            db.session.commit()
+            if debug_meeting_id is None:
+                db.session.commit()
         except Exception as e:
             # log error and traceback
             logger.error(f"Error adding participants to meeting: {str(e)}")
