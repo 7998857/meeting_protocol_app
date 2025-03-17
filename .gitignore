@@ -1,9 +1,13 @@
 venv/
 uploads/
+audio_files/
+__pycache__/
 .env
 database.db
 *.m4a
 *.pyc
 *.pkl
 google_docs_credentials.json
+google_drive_credentials.json
 token.pickle
+.flake8
