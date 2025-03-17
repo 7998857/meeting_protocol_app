@@ -8,8 +8,7 @@ from flask import request, render_template, flash, redirect, url_for, jsonify
 
 from app import app, db
 
-from .models import Meetings, Participants, Transcripts, \
-                       MeetingProtocols
+from .models import Meetings, Participants
 from config import Config
 from .meeting_audio_summarizer import MeetingAudioSummarizer
 from flask_apscheduler import APScheduler
@@ -22,6 +21,7 @@ logger.setLevel(Config.LOG_LEVEL)
 # Initialize scheduler
 scheduler = APScheduler()
 
+
 # This function should be called in your app's __init__.py
 def init_scheduler(app):
     # Configure scheduler to use SQLAlchemy for persistent job storage
@@ -32,6 +32,7 @@ def init_scheduler(app):
     scheduler.init_app(app)
     scheduler.start()
     return scheduler
+
 
 # Background job function
 def process_meeting_summarization(meeting_id):
@@ -66,6 +67,7 @@ def process_meeting_summarization(meeting_id):
                     db.session.commit()
             except Exception as inner_e:
                 logger.error(f"Error updating meeting status: {str(inner_e)}")
+
 
 @app.route("/", methods=["GET", "POST"])
 def meeting_form():
@@ -202,6 +204,7 @@ def add_participant():
         logger.error(f"Error adding participant: {str(e)}")
         flash("An error occurred while adding the participant", "error")
         return redirect(url_for("meeting_form"))
+
 
 # Add a route to check job status
 @app.route("/job_status/<job_id>")
