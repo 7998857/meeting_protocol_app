@@ -4,5 +4,8 @@
 venv
 .flake8
 google_drive_credentials.json
+google_docs_credentials.json
+token.pickle
 audio_files
 uploads
+__pycache__
