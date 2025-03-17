@@ -1,7 +1,7 @@
 from os import environ as env
 
 workers = env.get("GC_WORKERS") or 1
-timeout = env.get("GC_WORKER_TIMEOUT") or 120
+timeout = env.get("GC_WORKER_TIMEOUT") or 600
 bind = '0.0.0.0:5000'
 loglevel = str.lower(env.get("LOG_LEVEL") or 'debug')
 accesslog = '-'
