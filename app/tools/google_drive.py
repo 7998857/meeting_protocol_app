@@ -1,24 +1,33 @@
 import os
-import pickle
 import shutil
-import tempfile
 
-from docx import Document
 import pypandoc
 
-from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from google.oauth2 import service_account
 
 
-temp_dir = tempfile.mkdtemp()
+TEMP_DIR = "./tmp"
+os.makedirs(TEMP_DIR, exist_ok=True)
+
+# This is the id of the Meetingprotokolle folder in my Google Drive (Peter)
+# Can be found by opening the folder in the browser and copying the id from
+# the url:
+#   https://drive.google.com/drive/u/0/folders/1vjy3XZEnc5LJl6xYx0dVIeqRlb4UdbfH
+# CAVEAT: I tried locating the folder by name in the code, but it did not
+# work, since the code operates the API under the service account. I.e.,
+# it operates in the service account's drive, not the user's drive, and
+# can therefore not see the user's folders.
+# Therefore: You have to manually share the user's folder with the service
+# account email address and then specify for the script.
+FOLDER_ID = "1vjy3XZEnc5LJl6xYx0dVIeqRlb4UdbfH"
 
 
 def export_to_google_drive(
     filename: str,
     meeting_protocol: str,
-    folder_name: str = "Meetingprotokolle"
+    folder_id: str = FOLDER_ID
 ):
     """
     Exports a meeting protocol to Google Drive as a Google Doc.
@@ -27,7 +36,8 @@ def export_to_google_drive(
     Args:
         filename (str): The name for the Google Doc file
         meeting_protocol (str): The content of the meeting protocol in Markdown format
-        folder_name (str): The name of the folder to upload to (default: "Meetingprotokolle")
+        folder_id (str): The id of the folder to upload to (default: FOLDER_ID)
+            The default is the Meetingprotokolle folder id in my Google Drive (Peter).
 
     Returns:
         str: URL of the created Google Doc
@@ -36,64 +46,42 @@ def export_to_google_drive(
         - Google API credentials configured
         - Required packages: google-auth, google-auth-oauthlib, google-api-python-client
     """
-    creds = create_google_credentials()
+    service = authenticate_with_service_account('google_drive_credentials.json')
 
-    drive_service = build('drive', 'v3', credentials=creds)
-    
-    # Find or create the target folder
-    folder_id = find_or_create_folder(drive_service, folder_name)
-    
-    tmp_docx_file = os.path.join(temp_dir, f"{filename}.docx")
+    tmp_docx_file = os.path.join(TEMP_DIR, f"{filename}.docx")
     
     convert_markdown_to_docx(meeting_protocol, tmp_docx_file, font='Arial')
     
     doc_id = upload_to_google_drive(
-        drive_service,
+        service,
         filename,
         tmp_docx_file,
         folder_id
     )
     
-    set_document_permissions(drive_service, doc_id)
+    set_document_permissions(service, doc_id)
 
     # Get the document URL
     doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
 
     # Clean up temporary files
-    if os.path.exists(temp_dir):
-        shutil.rmtree(temp_dir)
+    if os.path.exists(TEMP_DIR):
+        shutil.rmtree(TEMP_DIR)
 
     return doc_id, doc_url
 
 
-def create_google_credentials():
-    """
-    Creates Google API credentials for the application.
+def authenticate_with_service_account(service_account_file):
+    # Define the required scopes
+    SCOPES = ['https://www.googleapis.com/auth/drive']
     
-    Returns:
-        Credentials object
-    """
-    SCOPES = ['https://www.googleapis.com/auth/drive']  # Full access to Drive
-
-    creds = None
-    # The file token.pickle stores the user's access and refresh tokens
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
-
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'google_docs_credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
-
-    return creds
+    # Authenticate using service account
+    credentials = service_account.Credentials.from_service_account_file(
+        service_account_file, scopes=SCOPES)
+    
+    # Build the Drive service
+    service = build('drive', 'v3', credentials=credentials)
+    return service
 
 
 def convert_markdown_to_docx(
@@ -108,13 +96,13 @@ def convert_markdown_to_docx(
     :param output_docx: Path to the output DOCX file.
     :param font: Font to use in the document (default: Arial)
     """
-    # Create a reference docx with the specified font
-    reference_docx = create_reference_docx(font)
     
     # Create a temporary file for the markdown content
-    tmp_md_file = os.path.join(temp_dir, 'temp.md')
+    tmp_md_file = os.path.join(TEMP_DIR, 'temp.md')
     with open(tmp_md_file, 'w') as f:
         f.write(markdown_content)
+
+    reference_docx = "app/tools/reference.docx"
 
     pypandoc.convert_file(
         tmp_md_file,
@@ -123,82 +111,6 @@ def convert_markdown_to_docx(
         format='commonmark',
         extra_args=['--reference-doc', reference_docx]
     )
-
-
-def create_reference_docx(font='Arial'):
-    """
-    Creates a reference DOCX file with the specified font.
-    
-    :param font: Font to use in the document
-    :return: Path to the reference DOCX file
-    """
-    # Create a temporary directory for our work
-    
-    reference_docx = os.path.join(temp_dir, 'reference.docx')
-    
-    reference_md = os.path.join(temp_dir, 'reference.md')
-    with open(reference_md, 'w') as f:
-        f.write('# Heading 1\n\nNormal text\n\n**Bold text**\n\n*Italic text*\n\n')
-        
-    # First, create a basic docx
-    pypandoc.convert_file(
-        reference_md,
-        'docx',
-        outputfile=reference_docx,
-        format='markdown'
-    )
-    
-    doc = Document(reference_docx)
-            
-    # Change the font for all styles
-    for style in doc.styles:
-        if hasattr(style, 'font') and style.font:
-            style.font.name = font
-    
-    # Save the modified document
-    doc.save(reference_docx)
-            
-    return reference_docx
-
-
-def find_or_create_folder(drive_service, folder_name):
-    """
-    Finds a folder by name or creates it if it doesn't exist.
-    
-    Args:
-        drive_service: Google Drive service object
-        folder_name: Name of the folder to find or create
-        
-    Returns:
-        ID of the folder
-    """
-    # Search for the folder - use 'me' as the owner to find folders in your drive
-    response = drive_service.files().list(
-        q=f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and 'me' in owners and trashed=false",
-        spaces='drive',
-        fields='files(id, name)'
-    ).execute()
-    
-    folders = response.get('files', [])
-    
-    # If folder exists, return its ID
-    if folders:
-        print(f"Found existing folder '{folder_name}' with ID: {folders[0]['id']}")
-        return folders[0]['id']
-    
-    # If folder doesn't exist, create it
-    folder_metadata = {
-        'name': folder_name,
-        'mimeType': 'application/vnd.google-apps.folder'
-    }
-    
-    folder = drive_service.files().create(
-        body=folder_metadata,
-        fields='id'
-    ).execute()
-    
-    print(f"Created new folder '{folder_name}' with ID: {folder.get('id')}")
-    return folder.get('id')
 
 
 def upload_to_google_drive(
