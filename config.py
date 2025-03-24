@@ -14,6 +14,9 @@ class Config(object):
 
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL") or "postgresql://postgres:kaitos123@carne-truenas:10999/meeting_protocols"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,
+    }
 
     LOG_LEVEL = os.environ.get("LOG_LEVEL") or "INFO"
 
