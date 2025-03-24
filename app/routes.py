@@ -75,7 +75,9 @@ def meeting_form():
         # Get existing participants and prompts from database
         participants = Participants.query.all()
         # Get meetings with their status
-        meetings = Meetings.query.order_by(Meetings.date.desc()).limit(5).all()
+        meetings = Meetings.query.order_by(
+            Meetings.created_at.desc()
+        ).limit(5).all()
         return render_template(
             "meeting_form.html",
             participants=participants,
