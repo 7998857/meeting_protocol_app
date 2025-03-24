@@ -1,12 +1,25 @@
+import logging
 import os
 import shutil
+import traceback
 
 import pypandoc
 
-from googleapiclient.discovery import build
+from googleapiclient.discovery import build, Resource
 from googleapiclient.http import MediaFileUpload
 from google.oauth2 import service_account
 
+from app.models import Participants
+from config import Config
+
+logger = logging.getLogger(__name__)
+logger.setLevel(Config.LOG_LEVEL)
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 TEMP_DIR = "./tmp"
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -27,6 +40,7 @@ FOLDER_ID = "1vjy3XZEnc5LJl6xYx0dVIeqRlb4UdbfH"
 def export_to_google_drive(
     filename: str,
     meeting_protocol: str,
+    participants: list[Participants],
     folder_id: str = FOLDER_ID
 ):
     """
@@ -36,6 +50,7 @@ def export_to_google_drive(
     Args:
         filename (str): The name for the Google Doc file
         meeting_protocol (str): The content of the meeting protocol in Markdown format
+        participants (list[Participants]): The participants of the meeting
         folder_id (str): The id of the folder to upload to (default: FOLDER_ID)
             The default is the Meetingprotokolle folder id in my Google Drive (Peter).
 
@@ -59,7 +74,11 @@ def export_to_google_drive(
         folder_id
     )
     
-    set_document_permissions(service, doc_id)
+    set_document_permissions(
+        service,
+        doc_id,
+        participants
+    )
 
     # Get the document URL
     doc_url = f"https://docs.google.com/document/d/{doc_id}/edit"
@@ -147,26 +166,42 @@ def upload_to_google_drive(
         media_body=media,
         fields='id'
     ).execute()
-    print(f"Uploaded file with ID: {doc_file.get('id')}")  
+    logger.info(f"Uploaded file with ID: {doc_file.get('id')}")
 
     doc_id = doc_file.get('id')
 
     return doc_id
 
 
-def set_document_permissions(drive_service, doc_id):
+def set_document_permissions(
+    drive_service: Resource,
+    doc_id: str,
+    participants: list[Participants]
+):
     """
-    Sets the permissions for a document to be readable by anyone with the link.
+    Sets the permissions for a document to be readable by meeting participants.
     
     Args:
         drive_service: Google Drive service object
         doc_id: ID of the document
+        participants: list of participants with their email addresses
     """
-    # Make the document readable by anyone with the link
-    drive_service.permissions().create(
-        fileId=doc_id,
-        body={
-            'type': 'anyone',
-            'role': 'writer'
-        }
-    ).execute()
+    # Give each participant writer access to the document
+    for participant in participants:
+        try:
+            drive_service.permissions().create(
+                fileId=doc_id,
+                body={
+                    'type': 'user',
+                    'role': 'writer',
+                    'emailAddress': participant.email
+                },
+                sendNotificationEmail=False
+            ).execute()
+        except Exception as e:
+            traceback.print_exc()
+            logger.warn(
+                f"\n\n Could not set permissions for {participant.email}. "
+                "Set permissions manually in google drive UI for this "
+                f"participant: {participant.name}."
+            )

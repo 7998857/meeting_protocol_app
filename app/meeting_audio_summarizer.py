@@ -10,7 +10,7 @@ import anthropic
 import assemblyai as aai
 from pydub import AudioSegment
 
-from .models import Meetings, Transcripts, Agendas, MeetingProtocols
+from .models import Meetings, Transcripts, Agendas, MeetingProtocols, Participants
 from config import Config
 from .tools.prompts_etc import PROMPTS, AGENDA_EXAMPLES
 from .tools.google_drive import export_to_google_drive
@@ -51,7 +51,6 @@ class MeetingAudioSummarizer:
         meeting: type[Meetings]
     ) -> str:
         participants = meeting.participants.all()
-        participants = [participant.name for participant in participants]
         transcript = self._transcribe_audio(
             meeting.audio_file_path,
             len(participants),
@@ -155,7 +154,8 @@ class MeetingAudioSummarizer:
         
         drive_file_id, doc_url = export_to_google_drive(
             filename,
-            meeting_protocol.text
+            meeting_protocol.text,
+            participants
         )
         logger.info(f"Meeting protocol exported to Google Drive: {doc_url}")
 
@@ -234,7 +234,7 @@ class MeetingAudioSummarizer:
     def _get_speaker_mapping(
         self,
         transcript: str,
-        participants: list[str],
+        participants: list[Participants],
         meeting_id: int
     ) -> dict:
         example_json = {
@@ -245,7 +245,7 @@ class MeetingAudioSummarizer:
         }
 
         prompt = PROMPTS["speaker_mapping"]["message"].format(
-            participants=participants,
+            participants=[p.name for p in participants],
             transcript=transcript,
             example_json=json.dumps(example_json)
         )
