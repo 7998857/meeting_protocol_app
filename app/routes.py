@@ -26,7 +26,10 @@ scheduler = APScheduler()
 def init_scheduler(app):
     # Configure scheduler to use SQLAlchemy for persistent job storage
     app.config['SCHEDULER_JOBSTORES'] = {
-        'default': SQLAlchemyJobStore(url=app.config['SQLALCHEMY_DATABASE_URI'])
+        'default': SQLAlchemyJobStore(
+            url=app.config['SQLALCHEMY_DATABASE_URI'],
+            engine_options=Config.SQLALCHEMY_ENGINE_OPTIONS
+        )
     }
     app.config['SCHEDULER_API_ENABLED'] = True
     scheduler.init_app(app)
