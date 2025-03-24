@@ -193,14 +193,22 @@ def meeting_form():
 def add_participant():
     try:
         new_participant_name = request.form.get("new_participant")
-        if new_participant_name:
-            new_participant = Participants(name=new_participant_name)
+        email = request.form.get("email")
+        
+        if new_participant_name and email:
+            new_participant = Participants(
+                name=new_participant_name,
+                email=email.lower()
+            )
             db.session.add(new_participant)
             db.session.commit()
             flash(
                 f"Successfully added participant: {new_participant_name}",
                 "success"
             )
+        else:
+            flash("Both name and email are required", "error")
+            
         return redirect(url_for("meeting_form"))
     except Exception as e:
         logger.error(f"Error adding participant: {str(e)}")
