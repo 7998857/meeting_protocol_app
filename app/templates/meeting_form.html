@@ -88,17 +88,17 @@
         <table class="table">
         <thead>
             <tr>
-            <th>Topic</th>
-            <th>Date</th>
+            <th>Meeting Date</th>
+            <th>Uploaded at</th>
             <th>Status</th>
             <th>Actions</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody style="display: table-row-group; direction: rtl;">
             {% for meeting in meetings %}
-            <tr>
-            <td>{{ meeting.topic }}</td>
-            <td>{{ meeting.date }}</td>
+            <tr style="direction: ltr;">
+            <td>{{ meeting.date.strftime('%d.%m.%Y at %H:%M') }}</td>
+            <td>{{ meeting.created_at.strftime('%d.%m.%Y at %H:%M') }}</td>
             <td>{{ meeting.status }}</td>
             <td>
                 {% if meeting.status == 'completed' and meeting.doc_url %}
