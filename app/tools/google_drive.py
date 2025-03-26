@@ -22,7 +22,6 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 TEMP_DIR = "./tmp"
-os.makedirs(TEMP_DIR, exist_ok=True)
 
 # This is the id of the Meetingprotokolle folder in my Google Drive (Peter)
 # Can be found by opening the folder in the browser and copying the id from
@@ -62,6 +61,8 @@ def export_to_google_drive(
         - Required packages: google-auth, google-auth-oauthlib, google-api-python-client
     """
     service = authenticate_with_service_account('google_drive_credentials.json')
+
+    os.makedirs(TEMP_DIR, exist_ok=True)
 
     tmp_docx_file = os.path.join(TEMP_DIR, f"{filename}.docx")
     
