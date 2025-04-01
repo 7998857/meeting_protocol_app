@@ -29,6 +29,8 @@ class Config(object):
     ASSEMBLYAI_API_KEY = os.environ.get("ASSEMBLYAI_API_KEY")
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
+    ANTROPIC_COOL_DOWN_SECONDS = os.environ.get("ANTROPIC_COOL_DOWN_SECONDS") or 120
+
     DEFAULT_PROMPT = (
         "Es handelt sich bei dem Gespräch um ein Arbeits-Meeting. "
         "Das Transkript wurde automatisch erstellt, es können sich also "
