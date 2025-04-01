@@ -28,6 +28,7 @@ logger.addHandler(handler)
 DEBUG_RUN = True if os.environ.get("DEBUG_RUN", False) else False
 
 aai.settings.api_key = Config.ASSEMBLYAI_API_KEY
+ANTROPIC_COOL_DOWN_SECONDS = int(Config.ANTROPIC_COOL_DOWN_SECONDS)
 
 
 class MeetingAudioSummarizer:
@@ -83,7 +84,7 @@ class MeetingAudioSummarizer:
 
         logger.info("Waiting one minute to cool down anthropic API")
         if not self._debug_run:
-            time.sleep(Config.ANTROPIC_COOL_DOWN_SECONDS)
+            time.sleep(ANTROPIC_COOL_DOWN_SECONDS)
 
         agenda = self._infer_agenda(
             transcript.text,
@@ -99,7 +100,7 @@ class MeetingAudioSummarizer:
 
         logger.info("Waiting one minute to cool down anthropic API")
         if not self._debug_run:
-            time.sleep(Config.ANTROPIC_COOL_DOWN_SECONDS)
+            time.sleep(ANTROPIC_COOL_DOWN_SECONDS)
 
         meeting_protocol = self._create_meeting_protocol(
             transcript.text,
@@ -117,7 +118,7 @@ class MeetingAudioSummarizer:
 
         logger.info("Waiting one minute to cool down anthropic API")
         if not self._debug_run:
-            time.sleep(Config.ANTROPIC_COOL_DOWN_SECONDS)
+            time.sleep(ANTROPIC_COOL_DOWN_SECONDS)
 
         filename = self._create_filename(
             meeting_protocol.text,
