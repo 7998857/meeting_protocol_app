@@ -23,9 +23,14 @@ class Config(object):
     UPLOAD_FOLDER = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "uploads"
     )
+    AUDIO_SAMPLES_FOLDER = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "speaker_audio_samples"
+    )
 
     # Create uploads directory if it doesn't exist
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    os.makedirs(AUDIO_SAMPLES_FOLDER, exist_ok=True)
+    
     ASSEMBLYAI_API_KEY = os.environ.get("ASSEMBLYAI_API_KEY")
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 

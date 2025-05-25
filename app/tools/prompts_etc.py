@@ -65,6 +65,9 @@ PROMPTS = {
             similar to the transcript. 
             Also we found some parts of the transcript where the speaker labels are not aligned 
             well with who actually spoke. So please be not confused by this. 
+            Further, the first few lines of the transcript may just be from audio samples of the participants.
+            They may not be from the actual meeting and may not fit into the context. Please ignore them, 
+            if they do not make sense.
             Please create a meeting protocol from the transcript and the agenda. In doing so, 
             make sure to include all important points that were discussed and the decisions that were made. 
             Further, try to infer the opinions of the participants and what was important to them 

@@ -3,6 +3,7 @@ import logging
 import os
 from pathlib import Path
 import pickle
+import string
 import time
 from typing import Union
 
@@ -54,7 +55,7 @@ class MeetingAudioSummarizer:
         participants = meeting.participants.all()
         transcript = self._transcribe_audio(
             meeting.audio_file_path,
-            len(participants),
+            participants,
             meeting.meeting_id
         )
         logger.info("Transcribed audio")
@@ -63,28 +64,23 @@ class MeetingAudioSummarizer:
             self._db.session.commit()
             logger.info("Added transcript to database")
 
-        speaker_mapping = self._get_speaker_mapping(
-            transcript.text,
+        speaker_mapping, unknown_speakers = self._get_speaker_mapping(
             participants,
-            meeting.meeting_id
         )
+        
         logger.info("Inferred speaker mapping")
         transcript.speaker_mapping = json.dumps(speaker_mapping)
         if not self._debug_run:
             self._db.session.commit()
             logger.info("Added speaker mapping to database")
 
-        for speaker, participant in speaker_mapping["speaker_mapping"].items():
+        for speaker, participant in speaker_mapping.items():
             transcript.text = transcript.text.replace(speaker, participant)
         
         logger.info("Applied speaker mapping to transcript")
         if not self._debug_run:
             self._db.session.commit()
             logger.info("Updated transcript in database")
-
-        logger.info("Waiting one minute to cool down anthropic API")
-        if not self._debug_run:
-            time.sleep(ANTROPIC_COOL_DOWN_SECONDS)
 
         agenda = self._infer_agenda(
             transcript.text,
@@ -106,7 +102,8 @@ class MeetingAudioSummarizer:
             transcript.text,
             agenda.text,
             meeting.date,
-            meeting.meeting_id
+            meeting.meeting_id,
+            unknown_speakers
         )
         logger.info("Created meeting protocol")
         meeting_protocol.status = "raw"
@@ -174,7 +171,7 @@ class MeetingAudioSummarizer:
     def _transcribe_audio(
         self,
         input_file_path: Union[str, Path],
-        num_speakers: int,
+        participants: list[Participants],
         meeting_id: int
     ) -> aai.Transcript:
         if self._debug_run:
@@ -193,21 +190,24 @@ class MeetingAudioSummarizer:
 
         if is_wav:
             audio = AudioSegment.from_wav(input_file_path)
-            audio.export("/tmp/output.mp3", format="mp3")
-            input_file_path = "/tmp/output.mp3"
+            audio.export("/tmp/output.aac", format="adts")
+            input_file_path = "/tmp/output.aac"
+
+        # Get binary audio data with participant samples prepended
+        input_file_path = self._prepend_speaker_samples(input_file_path, participants)
 
         transcript = self._transcriber.transcribe(
-            data=str(input_file_path),
+            data=input_file_path,
             config=aai.TranscriptionConfig(
                 language_code="de",
                 speaker_labels=True,
-                speakers_expected=num_speakers,
+                speakers_expected=len(participants),
                 speech_model="best",
             ),
         )
 
         text = self._get_text_with_speaker_labels(transcript)
-
+        
         if self._debug_run:
             self._save_to_cache(f"transcript_{meeting_id}", text)
         
@@ -217,9 +217,43 @@ class MeetingAudioSummarizer:
         )
 
         if is_wav:
-            os.remove("/tmp/output.mp3")
+            os.remove("/tmp/output.aac")
 
         return transcript
+    
+    def _prepend_speaker_samples(
+        self,
+        input_file_path: Union[str, Path],
+        participants: list[Participants]
+    ) -> bytes:
+        # Convert input file path to Path object for easier handling
+        input_path = Path(input_file_path)
+        input_format = input_path.suffix.replace('.', '')
+        
+        # Create a new combined audio segment starting with the original input
+        combined_audio = AudioSegment.from_file(str(input_path), format=input_format)
+        
+        for participant in participants[::-1]:
+            # Skip if no audio sample
+            if not participant.audio_sample_file_path or not os.path.exists(
+                participant.audio_sample_file_path
+            ):
+                continue
+                
+            sample_path = Path(participant.audio_sample_file_path)
+            sample_format = sample_path.suffix.replace('.', '')
+            
+            # Load sample audio
+            sample_audio = AudioSegment.from_file(str(sample_path), format=sample_format)
+            
+            # Prepend the sample (which effectively puts it before the current combined audio)
+            combined_audio = sample_audio + combined_audio
+        
+        # Export to bytes IO object
+        
+        combined_audio.export("/tmp/output.aac", format="adts")
+        
+        return "/tmp/output.aac"
     
     def _get_text_with_speaker_labels(
         self,
@@ -234,31 +268,24 @@ class MeetingAudioSummarizer:
     
     def _get_speaker_mapping(
         self,
-        transcript: str,
-        participants: list[Participants],
-        meeting_id: int
+        participants: list[Participants]
     ) -> dict:
-        example_json = {
-            "speaker_mapping": {
-                "Speaker A": "Participant 1",
-                "Speaker B": "Participant 2",
-            }
-        }
+        speaker_mapping = {}
+        unknown_speakers = []
+        for i, participant in enumerate(participants):
+            speaker_label = f"Speaker {string.ascii_uppercase[i]}"
+            if not participant.audio_sample_file_path or not os.path.exists(
+                participant.audio_sample_file_path
+            ):
+                speaker_mapping[
+                    speaker_label
+                ] = f"Unknown {len(unknown_speakers)}"
+                unknown_speakers.append(participant.name)
+                continue
+            
+            speaker_mapping[speaker_label] = participant.name
 
-        prompt = PROMPTS["speaker_mapping"]["message"].format(
-            participants=[p.name for p in participants],
-            transcript=transcript,
-            example_json=json.dumps(example_json)
-        )
-
-        message = self._call_claude_agent(
-            prompt,
-            PROMPTS["speaker_mapping"]["system"],
-            1000,
-            cache_key=f"speaker_mapping_{meeting_id}"
-        )
-
-        return json.loads(message)
+        return speaker_mapping, unknown_speakers
 
     def _call_claude_agent(
         self,
@@ -348,7 +375,8 @@ class MeetingAudioSummarizer:
         transcript: str,
         agenda: str,
         date: str,
-        meeting_id: int
+        meeting_id: int,
+        unknown_speakers: list[str]
     ) -> str:
         protocol_example_1 = open("few_shot_examples/protocol_2.txt", "r").read()
         protocol_example_2 = open("few_shot_examples/protocol_3.txt", "r").read()
@@ -361,6 +389,15 @@ class MeetingAudioSummarizer:
             date=date,
             protocol_examples=protocol_examples
         )
+
+        if len(unknown_speakers) > 0:
+            prompt += (
+                "\n\nCAUTION: The following participants could not be "
+                f"identified in the transcript: {unknown_speakers}. "
+                "Their contributions will be marked as 'Unknown' in the "
+                "protocol. "
+                "Please try to infer their names from the transcript."
+            )
 
         text = self._call_claude_agent(
             prompt,
@@ -445,8 +482,3 @@ class MeetingAudioSummarizer:
             5000,
             cache_key=f"ensure_markdown_{meeting_id}"
         )
-    
-
-if __name__ == "__main__":
-    summarizer = MeetingAudioSummarizer()
-    summarizer.summarize_meeting(29)
