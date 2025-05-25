@@ -25,6 +25,7 @@ class Participants(db.Model):
     participant_id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.Text, unique=True)
     email = db.Column(db.Text)
+    audio_sample_file_path = db.Column(db.Text)
     tag = db.Column(db.Text)
     changed_at = db.Column(
         db.DateTime,

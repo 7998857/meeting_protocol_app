@@ -74,6 +74,7 @@ def process_meeting_summarization(meeting_id):
 
 @app.route("/", methods=["GET", "POST"])
 def meeting_form():
+    db.create_all()
     if request.method == "GET":
         # Get existing participants and prompts from database
         participants = Participants.query.all()
@@ -194,19 +195,50 @@ def meeting_form():
         return redirect(url_for("meeting_form"))
 
 
+@app.route("/participants")
+def participants():
+    """Display the participants management page."""
+    participants = Participants.query.order_by(Participants.name).all()
+    return render_template("participants.html", participants=participants)
+
+
 @app.route("/add_participant", methods=["POST"])
 def add_participant():
     try:
         new_participant_name = request.form.get("new_participant")
         email = request.form.get("email")
+        tag = request.form.get("tag")
         
         if new_participant_name and email:
+            # Check if participant already exists
+            existing = Participants.query.filter_by(name=new_participant_name).first()
+            if existing:
+                flash(f"Participant '{new_participant_name}' already exists", "error")
+                return redirect(url_for("participants"))
+                
             new_participant = Participants(
                 name=new_participant_name,
-                email=email.lower()
+                email=email.lower(),
+                tag=tag if tag else None
             )
             db.session.add(new_participant)
             db.session.commit()
+            
+            # Handle audio sample upload
+            audio_sample = request.files.get("audio_sample")
+            if audio_sample and audio_sample.filename:
+                try:
+                    extension = Path(audio_sample.filename).suffix
+                    filename = f"participant_{new_participant.participant_id}_{new_participant.name.replace(' ', '_')}{extension}"
+                    filepath = Path(Config.AUDIO_SAMPLES_FOLDER) / filename
+                    audio_sample.save(filepath)
+                    
+                    new_participant.audio_sample_file_path = str(filepath)
+                    db.session.commit()
+                except Exception as audio_e:
+                    logger.error(f"Error saving audio sample: {str(audio_e)}")
+                    flash("Participant added, but audio sample could not be saved", "warning")
+            
             flash(
                 f"Successfully added participant: {new_participant_name}",
                 "success"
@@ -214,11 +246,127 @@ def add_participant():
         else:
             flash("Both name and email are required", "error")
             
-        return redirect(url_for("meeting_form"))
+        return redirect(url_for("participants"))
     except Exception as e:
         logger.error(f"Error adding participant: {str(e)}")
         flash("An error occurred while adding the participant", "error")
-        return redirect(url_for("meeting_form"))
+        return redirect(url_for("participants"))
+
+
+@app.route("/update_participant/<int:participant_id>", methods=["POST"])
+def update_participant(participant_id):
+    try:
+        participant = Participants.query.get_or_404(participant_id)
+        
+        name = request.form.get("name")
+        email = request.form.get("email")
+        tag = request.form.get("tag")
+        
+        if not name:
+            flash("Participant name is required", "error")
+            return redirect(url_for("participants"))
+            
+        # Check if another participant has the same name
+        existing = Participants.query.filter(
+            Participants.name == name,
+            Participants.participant_id != participant_id
+        ).first()
+        if existing:
+            flash(f"Another participant with name '{name}' already exists", "error")
+            return redirect(url_for("participants"))
+        
+        participant.name = name
+        participant.email = email.lower() if email else None
+        participant.tag = tag if tag else None
+        
+        # Handle audio sample upload
+        audio_sample = request.files.get("audio_sample")
+        if audio_sample and audio_sample.filename:
+            try:
+                # Remove old audio sample if it exists
+                if participant.audio_sample_file_path:
+                    old_file = Path(participant.audio_sample_file_path)
+                    if old_file.exists():
+                        old_file.unlink()
+                
+                extension = Path(audio_sample.filename).suffix
+                filename = f"participant_{participant_id}_{name.replace(' ', '_')}{extension}"
+                filepath = Path(Config.AUDIO_SAMPLES_FOLDER) / filename
+                audio_sample.save(filepath)
+                
+                participant.audio_sample_file_path = str(filepath)
+            except Exception as audio_e:
+                logger.error(f"Error updating audio sample: {str(audio_e)}")
+                flash("Participant updated, but audio sample could not be saved", "warning")
+        
+        db.session.commit()
+        flash(f"Successfully updated participant: {name}", "success")
+        
+    except Exception as e:
+        logger.error(f"Error updating participant: {str(e)}")
+        flash("An error occurred while updating the participant", "error")
+        
+    return redirect(url_for("participants"))
+
+
+@app.route("/delete_participant/<int:participant_id>")
+def delete_participant(participant_id):
+    try:
+        participant = Participants.query.get_or_404(participant_id)
+        participant_name = participant.name
+        
+        # Check if participant is associated with any meetings
+        if participant.meetings:
+            flash(
+                f"Cannot delete '{participant_name}' - participant is associated with existing meetings",
+                "error"
+            )
+            return redirect(url_for("participants"))
+        
+        # Remove audio sample file if it exists
+        if participant.audio_sample_file_path:
+            try:
+                audio_file = Path(participant.audio_sample_file_path)
+                if audio_file.exists():
+                    audio_file.unlink()
+            except Exception as file_e:
+                logger.error(f"Error removing audio file: {str(file_e)}")
+        
+        db.session.delete(participant)
+        db.session.commit()
+        flash(f"Successfully deleted participant: {participant_name}", "success")
+        
+    except Exception as e:
+        logger.error(f"Error deleting participant: {str(e)}")
+        flash("An error occurred while deleting the participant", "error")
+        
+    return redirect(url_for("participants"))
+
+
+@app.route("/remove_audio_sample/<int:participant_id>")
+def remove_audio_sample(participant_id):
+    try:
+        participant = Participants.query.get_or_404(participant_id)
+        
+        if participant.audio_sample_file_path:
+            try:
+                audio_file = Path(participant.audio_sample_file_path)
+                if audio_file.exists():
+                    audio_file.unlink()
+            except Exception as file_e:
+                logger.error(f"Error removing audio file: {str(file_e)}")
+            
+            participant.audio_sample_file_path = None
+            db.session.commit()
+            flash(f"Audio sample removed for {participant.name}", "success")
+        else:
+            flash("No audio sample to remove", "info")
+            
+    except Exception as e:
+        logger.error(f"Error removing audio sample: {str(e)}")
+        flash("An error occurred while removing the audio sample", "error")
+        
+    return redirect(url_for("participants"))
 
 
 # Add a route to check job status
