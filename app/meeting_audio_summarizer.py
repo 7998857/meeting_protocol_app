@@ -53,6 +53,7 @@ class MeetingAudioSummarizer:
         meeting: type[Meetings]
     ) -> str:
         participants = meeting.participants.all()
+        logger.info("Transcribing audio")
         transcript = self._transcribe_audio(
             meeting.audio_file_path,
             participants,
@@ -82,6 +83,7 @@ class MeetingAudioSummarizer:
             self._db.session.commit()
             logger.info("Updated transcript in database")
 
+        logger.info("Inferring agenda")
         agenda = self._infer_agenda(
             transcript.text,
             meeting.topic,
@@ -94,10 +96,14 @@ class MeetingAudioSummarizer:
             self._db.session.commit()
             logger.info("Added agenda to database")
 
-        logger.info("Waiting one minute to cool down anthropic API")
+        logger.info(
+            f"Waiting {Config.ANTROPIC_COOL_DOWN_SECONDS} seconds to cool down"
+            " anthropic API"
+        )
         if not self._debug_run:
             time.sleep(ANTROPIC_COOL_DOWN_SECONDS)
 
+        logger.info("Creating meeting protocol")
         meeting_protocol = self._create_meeting_protocol(
             transcript.text,
             agenda.text,
@@ -113,7 +119,10 @@ class MeetingAudioSummarizer:
             self._db.session.commit()
             logger.info("Added meeting protocol to database")
 
-        logger.info("Waiting one minute to cool down anthropic API")
+        logger.info(
+            f"Waiting {Config.ANTROPIC_COOL_DOWN_SECONDS} seconds to cool down"
+            " anthropic API"
+        )
         if not self._debug_run:
             time.sleep(ANTROPIC_COOL_DOWN_SECONDS)
 
