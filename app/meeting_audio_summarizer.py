@@ -225,8 +225,8 @@ class MeetingAudioSummarizer:
             text=text
         )
 
-        if is_wav:
-            os.remove("/tmp/output.aac")
+        # if is_wav:
+        #     os.remove("/tmp/output.aac")
 
         return transcript
     
@@ -254,9 +254,10 @@ class MeetingAudioSummarizer:
             
             # Load sample audio
             sample_audio = AudioSegment.from_file(str(sample_path), format=sample_format)
+            delay = AudioSegment.silent(duration=1000)
             
             # Prepend the sample (which effectively puts it before the current combined audio)
-            combined_audio = sample_audio + combined_audio
+            combined_audio = sample_audio + delay + combined_audio
         
         # Export to bytes IO object
         
